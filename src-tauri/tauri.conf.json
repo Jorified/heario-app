@@ -1,0 +1,39 @@
+{
+  "productName": "Heario",
+  "version": "0.1.0",
+  "identifier": "software.heario.app",
+  "build": {
+    "frontendDist": "../ui/dist",
+    "devUrl": "http://localhost:1420",
+    "beforeDevCommand": "npm run dev --prefix ../ui",
+    "beforeBuildCommand": "npm run build --prefix ../ui"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "Heario",
+        "width": 580,
+        "height": 400,
+        "resizable": true,
+        "decorations": false,
+        "alwaysOnTop": true,
+        "transparent": false,
+        "shadow": true,
+        "skipTaskbar": false,
+        "x": 40,
+        "y": 40
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": ["icons/32x32.png", "icons/128x128.png", "icons/icon.ico"],
+    "resources": {
+      "../sidecar/dist/heario-sidecar.exe": "./"
+    }
+  }
+}
