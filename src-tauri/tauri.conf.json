@@ -1,12 +1,12 @@
 {
   "productName": "Heario",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "identifier": "software.heario.app",
   "build": {
     "frontendDist": "../ui/dist",
     "devUrl": "http://localhost:1420",
-    "beforeDevCommand": "npm run dev --prefix ../ui",
-    "beforeBuildCommand": "npm run build --prefix ../ui"
+    "beforeDevCommand": "npm run dev --prefix ./ui",
+    "beforeBuildCommand": "npm run build --prefix ./ui"
   },
   "app": {
     "windows": [
@@ -17,7 +17,7 @@
         "resizable": true,
         "decorations": false,
         "alwaysOnTop": true,
-        "transparent": false,
+        "transparent": true,
         "shadow": true,
         "skipTaskbar": false,
         "x": 40,
