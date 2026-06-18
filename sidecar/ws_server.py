@@ -232,10 +232,12 @@ def _start_pipeline():
         return
     _pipeline_started = True
 
-    from config import STT_BACKEND, DEEPGRAM_API_KEY
+    from config import STT_BACKEND, DEEPGRAM_API_KEY, OPENAI_API_KEY
     stop_evt = threading.Event()   # never set — runs for the lifetime of the process
 
-    use_deepgram = DEEPGRAM_API_KEY and STT_BACKEND in ("deepgram", "auto")
+    use_deepgram   = bool(DEEPGRAM_API_KEY) and STT_BACKEND in ("deepgram", "auto")
+    use_openai_stt = not use_deepgram and bool(OPENAI_API_KEY) and STT_BACKEND in ("openai", "auto")
+
     if use_deepgram:
         from stream_stt import stream_transcripts
         def run():
@@ -250,8 +252,23 @@ def _start_pipeline():
                              "text": f"⚠ Audio error: {msg}. Go to Settings → Audio Source.",
                              "is_question": False, "answered": False})
         threading.Thread(target=run, daemon=True).start()
+    elif use_openai_stt:
+        # OpenAI Whisper API — reuses existing OpenAI key, no extra signup
+        from openai_whisper_stt import stream_transcripts as openai_whisper_transcripts
+        def run():
+            print("[pipeline] starting OpenAI Whisper API stream...")
+            try:
+                openai_whisper_transcripts(on_transcript, stop_evt)
+            except Exception as e:
+                msg = str(e)
+                print(f"[pipeline] OpenAI Whisper error: {msg}")
+                _events.put({"type": "status", "state": "error"})
+                _events.put({"type": "transcript", "speaker": None,
+                             "text": f"⚠ OpenAI Whisper error: {msg}",
+                             "is_question": False, "answered": False})
+        threading.Thread(target=run, daemon=True).start()
     else:
-        # No Deepgram key — fall back to local Whisper (no signup required)
+        # No Deepgram or OpenAI key — fall back to local Whisper (no signup required)
         from config import WHISPER_MODEL
         from local_whisper_stt import stream_transcripts as whisper_transcripts
         def run():

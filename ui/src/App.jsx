@@ -30,6 +30,7 @@ function SettingsModal({ onClose, liveBrief, onResearch, researching }) {
     company_name:"", company_brief:"",
     target_speaker:"auto", user_speaker:"none", default_mode:"technical_interview",
     audio_source:"microphone",
+    stt_backend:"auto",
     speaker_names:["Voice 1","Voice 2","Voice 3","Voice 4"],
     mode_prompts:{},
   });
@@ -108,7 +109,7 @@ function SettingsModal({ onClose, liveBrief, onResearch, researching }) {
                 onChange={e => setForm(f => ({...f, tavily_key: e.target.value}))}
                 placeholder="tvly-… (free at tavily.com)" />
             </label>
-            <div className="settings-hint">No Deepgram key? Heario falls back to local Whisper — no sign-up needed, works offline. Add a Deepgram key for lower latency and speaker diarization. Changes take effect after Save &amp; Apply.</div>
+            <div className="settings-hint">Transcription priority: Deepgram (if key set) → OpenAI Whisper API (if OpenAI key set) → Local Whisper (no key needed, works offline). Changes take effect after Save &amp; Apply.</div>
           </section>
 
           <section className="settings-section">
@@ -159,7 +160,17 @@ function SettingsModal({ onClose, liveBrief, onResearch, researching }) {
                 <option value="loopback">System Audio (WASAPI Loopback)</option>
               </select>
             </label>
-            <div className="settings-hint">Microphone — use this for live meetings on Zoom, Teams, or Google Meet. System Audio — use this to capture anything playing on your PC, like a YouTube interview or a recording. Changes take effect after Save &amp; Apply.</div>
+            <label className="settings-field">
+              <span>Transcription</span>
+              <select value={form.stt_backend || 'auto'}
+                onChange={e => setForm(f => ({...f, stt_backend: e.target.value}))}>
+                <option value="auto">Auto (best available)</option>
+                <option value="whisper">Local Whisper (offline, no key)</option>
+                <option value="openai">OpenAI Whisper API (uses OpenAI key)</option>
+                <option value="deepgram">Deepgram (requires Deepgram key)</option>
+              </select>
+            </label>
+            <div className="settings-hint">Auto picks the best available: Deepgram → OpenAI Whisper API → Local Whisper. Choose manually to control which key is used for transcription. Changes take effect after Save &amp; Apply.</div>
           </section>
 
           <section className="settings-section">
