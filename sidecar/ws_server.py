@@ -10,7 +10,7 @@ Messages are newline-delimited JSON.  Server → client events:
   {"type": "status",      "state": "listening"|"answering"|"reconnecting"}
   {"type": "mode",        "mode": "technical_interview"}
   {"type": "history",     "pos": 2, "total": 3, "question": "...", "answer": "..."}
-  {"type": "session_end", "summary": "..."}
+  {"type": "session_end", "summary": "...", "debrief": "..."}
   {"type": "web",         "enabled": true}
 
 Client → server commands:
@@ -20,6 +20,8 @@ Client → server commands:
   {"cmd": "clear"}
   {"cmd": "nav", "delta": -1}
   {"cmd": "quit"}
+  {"cmd": "end_session"}
+  {"cmd": "quick_debrief", "text": "..."}
 """
 import asyncio
 import json
@@ -221,6 +223,26 @@ def handle_cmd(msg: dict):
     elif cmd == "quit":
         _events.put({"type": "session_end", "summary": assistant.session_summary()})
         _log.export(speaker_names=_SPEAKER_NAMES)
+    elif cmd == "end_session":
+        def run():
+            global _log
+            _events.put({"type": "status", "state": "answering"})
+            debrief = assistant.generate_debrief(_log._events)
+            summary = assistant.session_summary()
+            _log.export(speaker_names=_SPEAKER_NAMES)
+            _events.put({"type": "session_end", "summary": summary, "debrief": debrief})
+            _log = SessionLog()
+            assistant.reset_session()
+            _events.put({"type": "status", "state": "listening"})
+        threading.Thread(target=run, daemon=True).start()
+    elif cmd == "quick_debrief":
+        text = msg.get("text", "")
+        def run():
+            _events.put({"type": "status", "state": "answering"})
+            debrief = assistant.generate_quick_debrief(text)
+            _events.put({"type": "quick_debrief_result", "debrief": debrief})
+            _events.put({"type": "status", "state": "listening"})
+        threading.Thread(target=run, daemon=True).start()
 
 
 # ── websocket handler ─────────────────────────────────────────────────────────

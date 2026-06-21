@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { LogicalSize } from "@tauri-apps/api/dpi";
 import { invoke } from "@tauri-apps/api/core";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { jsPDF } from "jspdf";
@@ -12,6 +13,8 @@ const FONT_SIZES    = [11, 12, 13, 14, 16, 18];
 const OPACITY_STEPS = [0, 0.15, 0.35, 0.55, 0.78, 1.0];
 const MAX_TX_LINES  = 8;
 const CONF_COLORS   = ["#888", "#f05b5b", "#d98b3a", "#f5bf4f", "#8bc34a", "#5fb85f"];
+const FULL_SIZE      = { width: 580, height: 400 };
+const DISCREET_SIZE  = { width: 200, height: 34 };
 
 // ── Settings Modal ────────────────────────────────────────────────────────────
 function SettingsModal({ onClose, liveBrief, onResearch, researching }) {
@@ -38,12 +41,57 @@ function SettingsModal({ onClose, liveBrief, onResearch, researching }) {
   const [autostart, setAutostart] = useState(false);
   const [saved, setSaved] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [presets, setPresets] = useState({});
+  const [presetName, setPresetName] = useState("");
+  const [selectedPreset, setSelectedPreset] = useState("");
 
   useEffect(() => {
-    Promise.all([invoke("get_settings"), invoke("get_autostart")])
-      .then(([s, a]) => { setForm({ ...s, speaker_names: s.speaker_names?.length ? s.speaker_names : ["Voice 1","Voice 2","Voice 3","Voice 4"] }); setAutostart(a); setLoading(false); })
+    Promise.all([invoke("get_settings"), invoke("get_autostart"), invoke("list_company_presets")])
+      .then(([s, a, p]) => {
+        setForm({ ...s, speaker_names: s.speaker_names?.length ? s.speaker_names : ["Voice 1","Voice 2","Voice 3","Voice 4"] });
+        setAutostart(a);
+        setPresets(p || {});
+        setLoading(false);
+      })
       .catch(() => setLoading(false));
   }, []);
+
+  const applyPreset = (name) => {
+    setSelectedPreset(name);
+    const p = presets[name];
+    if (!p) return;
+    setForm(f => ({
+      ...f,
+      company_name:    p.company_name,
+      job_description: p.job_description,
+      company_brief:   p.company_brief,
+      default_mode:    p.default_mode,
+      mode_prompts:    { ...f.mode_prompts, ...p.mode_prompts },
+    }));
+  };
+
+  const saveCurrentAsPreset = async () => {
+    const name = presetName.trim();
+    if (!name) return;
+    const preset = {
+      company_name:    form.company_name || "",
+      job_description: form.job_description || "",
+      company_brief:   liveBrief || form.company_brief || "",
+      default_mode:    form.default_mode,
+      mode_prompts:    form.mode_prompts || {},
+    };
+    await invoke("save_company_preset", { name, preset });
+    setPresets(p => ({ ...p, [name]: preset }));
+    setSelectedPreset(name);
+    setPresetName("");
+  };
+
+  const deletePreset = async (name) => {
+    if (!name) return;
+    await invoke("delete_company_preset", { name });
+    setPresets(p => { const next = { ...p }; delete next[name]; return next; });
+    if (selectedPreset === name) setSelectedPreset("");
+  };
 
   const save = async () => {
     await invoke("save_settings", { settings: form });
@@ -148,6 +196,36 @@ function SettingsModal({ onClose, liveBrief, onResearch, researching }) {
                 value={liveBrief || form.company_brief} />
             )}
             <div className="settings-hint">Heario searches the web and generates a company brief — industry, recent news, values — injected into every AI answer automatically. Click Research before each interview.</div>
+          </section>
+
+          <section className="settings-section">
+            <div className="settings-label">Quick-mode Presets per Company</div>
+            <label className="settings-field">
+              <span>Saved presets</span>
+              <select value={selectedPreset} onChange={e => applyPreset(e.target.value)}>
+                <option value="">— select to apply —</option>
+                {Object.keys(presets).sort().map(name => (
+                  <option key={name} value={name}>{name}</option>
+                ))}
+              </select>
+            </label>
+            {selectedPreset && (
+              <button className="action-btn" style={{ alignSelf:"flex-start" }}
+                onClick={() => deletePreset(selectedPreset)}>
+                🗑 Delete "{selectedPreset}"
+              </button>
+            )}
+            <label className="settings-field">
+              <span>Save current as</span>
+              <input type="text" value={presetName}
+                onChange={e => setPresetName(e.target.value)}
+                placeholder="e.g. Stripe, Anthropic…" />
+            </label>
+            <button className="action-btn" style={{ alignSelf:"flex-start" }}
+              disabled={!presetName.trim()} onClick={saveCurrentAsPreset}>
+              💾 Save Preset
+            </button>
+            <div className="settings-hint">Saves company name, job description, brief, default mode, and mode prompts together. Applying a preset instantly swaps your whole setup when prepping for a different company — no retyping.</div>
           </section>
 
           <section className="settings-section">
@@ -279,10 +357,25 @@ function HistoryModal({ onClose }) {
   const [content, setContent] = useState("");
   const [loading, setLoading] = useState(true);
   const [exported, setExported] = useState(false);
+  const [query, setQuery] = useState("");
+  const [matches, setMatches] = useState(null); // null = no search active
+  const [searching, setSearching] = useState(false);
 
   useEffect(() => {
     invoke("list_sessions").then(s => { setSessions(s); setLoading(false); });
   }, []);
+
+  useEffect(() => {
+    const q = query.trim();
+    if (!q) { setMatches(null); return; }
+    setSearching(true);
+    const t = setTimeout(() => {
+      invoke("search_sessions", { query: q })
+        .then(setMatches)
+        .finally(() => setSearching(false));
+    }, 200); // debounce while typing
+    return () => clearTimeout(t);
+  }, [query]);
 
   const open = async (name) => {
     setSelected(name);
@@ -348,11 +441,41 @@ function HistoryModal({ onClose }) {
           </div>
           <button className="modal-close" onClick={onClose}>✕</button>
         </div>
+        <div className="history-search">
+          <input
+            className="history-search-input"
+            placeholder="🔍 Search past questions & answers…"
+            value={query}
+            onChange={e => setQuery(e.target.value)}
+          />
+          {query && (
+            <button className="action-btn" onClick={() => setQuery("")}>✕</button>
+          )}
+        </div>
         <div className="history-body">
           <div className="history-list">
             {loading && <span className="placeholder">Loading…</span>}
             {!loading && sessions.length === 0 && <span className="placeholder">No sessions yet</span>}
-            {sessions.map(s => (
+
+            {!loading && query && (
+              <>
+                {searching && <span className="placeholder">Searching…</span>}
+                {!searching && matches && matches.length === 0 && (
+                  <span className="placeholder">No matches for "{query}"</span>
+                )}
+                {!searching && matches && matches.map(m => (
+                  <div key={m.name} className={`history-item history-match${selected === m.name ? " active" : ""}`}
+                    onClick={() => open(m.name)}>
+                    <div className="history-match-name">{m.name.replace("session-","").replace(".txt","")}</div>
+                    {m.snippets.map((sn, i) => (
+                      <div key={i} className="history-match-snippet">{sn}</div>
+                    ))}
+                  </div>
+                ))}
+              </>
+            )}
+
+            {!loading && !query && sessions.map(s => (
               <div key={s} className={`history-item${selected === s ? " active" : ""}`}
                 onClick={() => open(s)}>
                 {s.replace("session-","").replace(".txt","")}
@@ -370,10 +493,224 @@ function HistoryModal({ onClose }) {
   );
 }
 
+// ── Pinned Answers Modal ──────────────────────────────────────────────────────
+function PinnedModal({ pinned, onUnpin, onClose }) {
+  const [copiedId, setCopiedId] = useState(null);
+
+  const copy = async (item) => {
+    await writeText(item.text);
+    setCopiedId(item.id);
+    setTimeout(() => setCopiedId(null), 1500);
+  };
+
+  return (
+    <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
+      <div className="modal modal-wide">
+        <div className="modal-header">
+          <span>📌 Pinned Answers</span>
+          <button className="modal-close" onClick={onClose}>✕</button>
+        </div>
+        <div className="modal-body">
+          {pinned.length === 0 && <span className="placeholder">No pinned answers yet — click 📌 Pin on an answer to save it here.</span>}
+          {pinned.map(item => (
+            <div key={item.id} className="pinned-item">
+              <div className="pinned-item-head">
+                <span className="pinned-item-mode">{MODE_ICONS[item.mode]} {MODE_LABELS[item.mode] ?? item.mode}</span>
+                <span className="pinned-item-time">{item.ts}</span>
+                <div className="spacer" />
+                <button className="action-btn" onClick={() => copy(item)}>
+                  {copiedId === item.id ? "✓ Copied" : "⧉ Copy"}
+                </button>
+                <button className="action-btn" onClick={() => onUnpin(item.id)}>✕ Unpin</button>
+              </div>
+              <pre className="pinned-item-text">{item.text}</pre>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Post-interview Debrief Modal ───────────────────────────────────────────────
+// groups raw "HEADING\n- bullet\n- bullet" text into {title, lines} sections for display
+function parseDebrief(text) {
+  const sections = [];
+  let current = null;
+  for (const raw of text.split("\n")) {
+    const line = raw.trim();
+    if (/^[A-Z][A-Z -]{3,}$/.test(line)) {
+      current = { title: line, lines: [] };
+      sections.push(current);
+    } else if (line) {
+      if (!current) { current = { title: null, lines: [] }; sections.push(current); }
+      current.lines.push(line.replace(/^[-•]\s*/, ""));
+    }
+  }
+  return sections;
+}
+
+function downloadDebriefPDF(text, title = "Heario Debrief") {
+  if (!text) return;
+  const doc = new jsPDF({ unit: "pt", format: "a4" });
+  const margin = 40;
+  const pageW = doc.internal.pageSize.getWidth();
+  const maxW = pageW - margin * 2;
+  const lineH = 13;
+  let y = margin;
+
+  const addLine = (line, size = 10, style = "normal", color = [40, 40, 40]) => {
+    doc.setFontSize(size);
+    doc.setFont("helvetica", style);
+    doc.setTextColor(...color);
+    doc.splitTextToSize(line, maxW).forEach(l => {
+      if (y > doc.internal.pageSize.getHeight() - margin) { doc.addPage(); y = margin; }
+      doc.text(l, margin, y);
+      y += lineH;
+    });
+  };
+
+  addLine(`${title} — ${new Date().toLocaleString()}`, 14, "bold", [30, 30, 30]);
+  y += 6;
+  text.split("\n").forEach(line => {
+    if (/^[A-Z ]{4,}$/.test(line.trim())) addLine(line, 11, "bold", [50, 100, 180]);
+    else if (line.trim())                 addLine(line, 10, "normal", [60, 60, 60]);
+    else                                   y += 4;
+  });
+  doc.save(`heario-debrief-${Date.now()}.pdf`);
+}
+
+function DebriefModal({ text, loading, onClose }) {
+  const [exported, setExported] = useState(false);
+
+  const savePDF = () => {
+    downloadDebriefPDF(text, "Heario Debrief");
+    setExported(true);
+    setTimeout(() => setExported(false), 2000);
+  };
+
+  return (
+    <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
+      <div className="modal modal-wide">
+        <div className="modal-header">
+          <span>📝 Post-Interview Debrief</span>
+          {!loading && text && (
+            <button className="action-btn" onClick={savePDF}>
+              {exported ? "✓ Saved" : "⬇ PDF"}
+            </button>
+          )}
+          <button className="modal-close" onClick={onClose}>✕</button>
+        </div>
+        <div className="modal-body">
+          {loading ? (
+            <span className="placeholder">Generating debrief…</span>
+          ) : parseDebrief(text).map((s, i) => (
+            <div key={i} className="debrief-section">
+              {s.title && <div className="debrief-section-title">{s.title}</div>}
+              <ul className="debrief-list">
+                {s.lines.map((l, j) => <li key={j}>{l}</li>)}
+              </ul>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const QUICK_DEBRIEF_KEY = "heario_quick_debrief_used";
+const QUICK_DEBRIEF_TEXT_KEY = "heario_quick_debrief_text";
+
+// ── Quick Debrief Modal (free, one-time typed-Q&A teaser) ────────────────────
+function QuickDebriefModal({ onClose, onGenerated, alreadyUsed }) {
+  const [qa, setQa]           = useState("");
+  const [loading, setLoading] = useState(false);
+  const [result, setResult]   = useState(() => localStorage.getItem(QUICK_DEBRIEF_TEXT_KEY) || "");
+  const [error, setError]     = useState("");
+  const [exported, setExported] = useState(false);
+
+  const generate = () => {
+    if (!qa.trim()) return;
+    setLoading(true);
+    setError("");
+    onGenerated(qa, (res) => {
+      setLoading(false);
+      if (res.error) { setError(res.error); return; }
+      setResult(res.text);
+      localStorage.setItem(QUICK_DEBRIEF_TEXT_KEY, res.text);
+    });
+  };
+
+  const savePDF = () => {
+    downloadDebriefPDF(result, "Heario Quick Debrief");
+    setExported(true);
+    setTimeout(() => setExported(false), 2000);
+  };
+
+  return (
+    <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
+      <div className="modal modal-wide">
+        <div className="modal-header">
+          <span>✍️ Quick Debrief</span>
+          {result && !loading && (
+            <button className="action-btn" onClick={savePDF}>
+              {exported ? "✓ Saved" : "⬇ PDF"}
+            </button>
+          )}
+          <button className="modal-close" onClick={onClose}>✕</button>
+        </div>
+        <div className="modal-body">
+          {alreadyUsed && !result ? (
+            <span className="placeholder">
+              You've used your free Quick Debrief. Start a live session to get a debrief
+              after every interview, unlimited.
+            </span>
+          ) : loading ? (
+            <span className="placeholder">Generating debrief…</span>
+          ) : result ? (
+            parseDebrief(result).map((s, i) => (
+              <div key={i} className="debrief-section">
+                {s.title && <div className="debrief-section-title">{s.title}</div>}
+                <ul className="debrief-list">
+                  {s.lines.map((l, j) => <li key={j}>{l}</li>)}
+                </ul>
+              </div>
+            ))
+          ) : (
+            <>
+              <span className="settings-hint">
+                Paste or type a question you were asked and the answer you gave — get a free
+                debrief with follow-ups to prepare. One free use per install.
+              </span>
+              <textarea
+                className="settings-textarea"
+                rows={6}
+                placeholder={"Q: How would you scale this to 10M requests/day?\nA: Shard by tenant, cache hot reads, queue the writes."}
+                value={qa}
+                onChange={e => setQa(e.target.value)}
+              />
+              {error && <span className="quick-debrief-error">{error}</span>}
+            </>
+          )}
+        </div>
+        {!alreadyUsed && !result && (
+          <div className="modal-footer">
+            <button className="action-btn" onClick={generate} disabled={!qa.trim() || loading}>
+              {loading ? "Generating…" : error ? "Try again" : "Generate my free debrief"}
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ── Main App ──────────────────────────────────────────────────────────────────
 export default function App() {
   const ws             = useRef(null);
   const reconnectTimer = useRef(null);
+  const endSessionTimer = useRef(null);
+  const quickDebriefTimer = useRef(null);
   const ansRef         = useRef(null);
   const txRef          = useRef(null);
   const bodyRef        = useRef(null);
@@ -402,6 +739,43 @@ export default function App() {
   const [length,       setLength]      = useState("normal");
   const [companyBrief, setCompanyBrief]= useState("");
   const [researching,  setResearching] = useState(false);
+  const [discreetMode, setDiscreetMode]= useState(false);
+  const [pinned,       setPinned]      = useState([]);
+  const [showPinned,   setShowPinned]  = useState(false);
+  const [companyPresets, setCompanyPresets] = useState({});
+  const [switchingCompany, setSwitchingCompany] = useState(false);
+  const [showDebrief,  setShowDebrief] = useState(false);
+  const [debriefText,  setDebriefText] = useState("");
+  const [endingSession, setEndingSession] = useState(false);
+  const [showQuickDebrief, setShowQuickDebrief] = useState(false);
+  const [quickDebriefUsed, setQuickDebriefUsed] = useState(() => localStorage.getItem(QUICK_DEBRIEF_KEY) === "1");
+  const quickDebriefResolveRef = useRef(null);
+
+  const refreshCompanyPresets = useCallback(() => {
+    invoke("list_company_presets").then(setCompanyPresets).catch(() => {});
+  }, []);
+
+  const applyCompanyPreset = async (name) => {
+    const preset = companyPresets[name];
+    if (!preset) return;
+    setSwitchingCompany(true);
+    try {
+      const current = await invoke("get_settings");
+      const merged = {
+        ...current,
+        company_name:    preset.company_name,
+        job_description: preset.job_description,
+        company_brief:   preset.company_brief,
+        default_mode:    preset.default_mode,
+        mode_prompts:    { ...current.mode_prompts, ...preset.mode_prompts },
+      };
+      await invoke("save_settings", { settings: merged });
+      await invoke("restart_sidecar");
+      setCompanyBrief(preset.company_brief || "");
+    } finally {
+      setSwitchingCompany(false);
+    }
+  };
 
   const fontSize = FONT_SIZES[fontIdx];
   const opacity  = OPACITY_STEPS[opacityIdx];
@@ -455,19 +829,35 @@ export default function App() {
           requestAnimationFrame(() => txRef.current?.scrollTo(0, 9999));
           break;
         case "session_end":
-          console.log("Session ended:", ev.summary);
+          clearTimeout(endSessionTimer.current);
+          setEndingSession(false);
+          setDebriefText(ev.debrief || ev.summary || "");
+          setShowDebrief(true);
+          break;
+        case "quick_debrief_result":
+          clearTimeout(quickDebriefTimer.current);
+          // guard: if the 30s timeout already fired (ref cleared) or a retry replaced it,
+          // a late/stale response must not silently consume the user's one free use
+          if (quickDebriefResolveRef.current) {
+            quickDebriefResolveRef.current({ text: ev.debrief || "" });
+            quickDebriefResolveRef.current = null;
+            localStorage.setItem(QUICK_DEBRIEF_KEY, "1");
+            setQuickDebriefUsed(true);
+          }
           break;
       }
     };
   }, []);
 
-  useEffect(() => { connect(); return () => clearTimeout(reconnectTimer.current); }, [connect]);
+  useEffect(() => { connect(); return () => { clearTimeout(reconnectTimer.current); clearTimeout(endSessionTimer.current); clearTimeout(quickDebriefTimer.current); }; }, [connect]);
 
   useEffect(() => {
     invoke("get_settings").then(s => {
       if (s.speaker_names?.length) setSpeakerNames(s.speaker_names);
     }).catch(() => {});
   }, []);
+
+  useEffect(() => { refreshCompanyPresets(); }, [refreshCompanyPresets]);
 
   // ── commands ──────────────────────────────────────────────────────────────
   const send        = obj => ws.current?.readyState === WebSocket.OPEN && ws.current.send(JSON.stringify(obj));
@@ -517,6 +907,36 @@ export default function App() {
   const winMinimize = () => getCurrentWindow().minimize();
   const winMaximize = () => { getCurrentWindow().toggleMaximize(); setIsMaximized(m => !m); };
   const winClose    = () => getCurrentWindow().close(); // hides to tray (Rust handler)
+  const runQuickDebrief = (qaText, callback) => {
+    if (wsState !== "open") { callback({ error: "Not connected — check your connection and try again." }); return; }
+    quickDebriefResolveRef.current = callback;
+    send({ cmd: "quick_debrief", text: qaText });
+    clearTimeout(quickDebriefTimer.current);
+    quickDebriefTimer.current = setTimeout(() => {
+      quickDebriefResolveRef.current?.({ error: "Timed out waiting for a response — try again." });
+      quickDebriefResolveRef.current = null;
+    }, 30000);
+  };
+
+  const endSession  = () => {
+    if (wsState !== "open") return; // nothing to end if we're not connected
+    setEndingSession(true); setDebriefText(""); setShowDebrief(true);
+    send({ cmd: "end_session" });
+    // safety net: don't leave the button/modal stuck forever if the sidecar never replies
+    clearTimeout(endSessionTimer.current);
+    endSessionTimer.current = setTimeout(() => {
+      setEndingSession(false);
+      setDebriefText(t => t || "[timed out waiting for the sidecar — try again]");
+    }, 30000);
+  };
+
+  // ── discreet mode ─────────────────────────────────────────────────────────
+  const toggleDiscreet = async () => {
+    const next = !discreetMode;
+    setDiscreetMode(next);
+    const size = next ? DISCREET_SIZE : FULL_SIZE;
+    await getCurrentWindow().setSize(new LogicalSize(size.width, size.height));
+  };
 
   // ── copy ──────────────────────────────────────────────────────────────────
   const copyAnswer = async () => {
@@ -525,6 +945,16 @@ export default function App() {
     setCopied(true);
     setTimeout(() => setCopied(false), 1800);
   };
+
+  // ── pin answer ────────────────────────────────────────────────────────────
+  const [justPinned, setJustPinned] = useState(false);
+  const pinAnswer = () => {
+    if (!answer) return;
+    setPinned(p => [{ id: Date.now(), text: answer, mode, ts: new Date().toLocaleTimeString() }, ...p]);
+    setJustPinned(true);
+    setTimeout(() => setJustPinned(false), 1200);
+  };
+  const unpinAnswer = (id) => setPinned(p => p.filter(item => item.id !== id));
 
   // ── resizable divider ─────────────────────────────────────────────────────
   const onDividerMouseDown = e => {
@@ -550,38 +980,70 @@ export default function App() {
     connecting:"#888", paused:"#888", error:"#f05b5b",
   }[status] ?? "#888";
 
+  if (discreetMode) {
+    return (
+      <div className="discreet-pill" onClick={toggleDiscreet} title="Click to expand">
+        <div className="status-dot" style={{ background: statusColor }} />
+        <span className="discreet-label">Heario</span>
+      </div>
+    );
+  }
+
   return (
     <div className="overlay" style={{ opacity }}>
 
-      {/* ── top bar ── */}
+      {/* ── top bar (2 rows) ── */}
       <div className="topbar">
-        <div className="status-dot" style={{ background: statusColor }} />
-        <span className="status-text" style={{ color: statusColor }}>{status}</span>
-        <div className="spacer" />
-        <button className={`pill-btn pause-btn${paused ? " paused" : ""}`}
-          onClick={togglePause} title="p — pause/resume">
-          {paused ? "▶ Resume" : "⏸ Pause"}
-        </button>
-        <button className={`pill-btn web-btn${webEnabled ? " web-active" : ""}`}
-          onClick={toggleWeb} title="w — toggle web search">
-          🔍{webEnabled ? " Web On" : " Web"}
-        </button>
-        <button className="pill-btn" onClick={cycleMode} title="m — cycle mode">
-          {MODE_ICONS[mode]} {MODE_LABELS[mode] ?? mode}
-        </button>
-        {total > 0 && (
-          <div className="nav-row">
-            <button className="nav-btn" onClick={() => nav(-1)} title="[ — older">‹</button>
-            <span className="counter">{pos}/{total}</span>
-            <button className="nav-btn" onClick={() => nav(+1)} title="] — newer">›</button>
+        <div className="topbar-row topbar-row1">
+          <div className="status-dot" style={{ background: statusColor }} />
+          <span className="status-text" style={{ color: statusColor }}>{status}</span>
+          {total > 0 && (
+            <div className="nav-row">
+              <button className="nav-btn" onClick={() => nav(-1)} title="[ — older">‹</button>
+              <span className="counter">{pos}/{total}</span>
+              <button className="nav-btn" onClick={() => nav(+1)} title="] — newer">›</button>
+            </div>
+          )}
+          <div className="spacer" />
+          <div className="win-controls">
+            <button className="wc-btn wc-min"   onClick={winMinimize} title="Minimise">–</button>
+            <button className="wc-btn wc-max"   onClick={winMaximize} title={isMaximized?"Restore":"Maximise"}>{isMaximized?"❐":"□"}</button>
+            <button className="wc-btn wc-close" onClick={winClose}    title="Hide to tray">✕</button>
           </div>
-        )}
-        <button className="icon-btn" onClick={() => setShowHistory(true)} title="Session history">🕐</button>
-        <button className="icon-btn settings-btn" onClick={() => setShowSettings(true)} title="Settings">⚙ Settings</button>
-        <div className="win-controls">
-          <button className="wc-btn wc-min"   onClick={winMinimize} title="Minimise">–</button>
-          <button className="wc-btn wc-max"   onClick={winMaximize} title={isMaximized?"Restore":"Maximise"}>{isMaximized?"❐":"□"}</button>
-          <button className="wc-btn wc-close" onClick={winClose}    title="Hide to tray">✕</button>
+        </div>
+        <div className="topbar-row topbar-row2">
+          <button className={`pill-btn pause-btn${paused ? " paused" : ""}`}
+            onClick={togglePause} title="p — pause/resume">
+            {paused ? "▶ Resume" : "⏸ Pause"}
+          </button>
+          <button className={`pill-btn web-btn${webEnabled ? " web-active" : ""}`}
+            onClick={toggleWeb} title="w — toggle web search">
+            🔍{webEnabled ? " Web On" : " Web"}
+          </button>
+          <button className="pill-btn" onClick={cycleMode} title="m — cycle mode">
+            {MODE_ICONS[mode]} {MODE_LABELS[mode] ?? mode}
+          </button>
+          {Object.keys(companyPresets).length > 0 && (
+            <select className="company-select" value="" disabled={switchingCompany}
+              onChange={e => { if (e.target.value) applyCompanyPreset(e.target.value); }}
+              title="Quick-switch company preset">
+              <option value="">{switchingCompany ? "Switching…" : "🏢 Company…"}</option>
+              {Object.keys(companyPresets).sort().map(name => (
+                <option key={name} value={name}>{name}</option>
+              ))}
+            </select>
+          )}
+          <div className="spacer" />
+          <button className="icon-btn" onClick={toggleDiscreet} title="Discreet mode">🕶</button>
+          <button className="icon-btn" onClick={() => setShowPinned(true)} title="Pinned answers">
+            📌{pinned.length > 0 && <span className="badge">{pinned.length}</span>}
+          </button>
+          <button className="icon-btn" onClick={() => setShowHistory(true)} title="Session history">🕐</button>
+          <button className="icon-btn" onClick={endSession} disabled={endingSession} title="End session & get a debrief">
+            {endingSession ? "⏳" : "📝"}
+          </button>
+          <button className="icon-btn" onClick={() => setShowQuickDebrief(true)} title="Quick Debrief — free, no session needed">✍️</button>
+          <button className="icon-btn settings-btn" onClick={() => setShowSettings(true)} title="Settings">⚙ Settings</button>
         </div>
       </div>
 
@@ -651,6 +1113,9 @@ export default function App() {
         <button className="action-btn copy"  onClick={copyAnswer}>
           {copied ? "✓ Copied" : "⧉ Copy"}
         </button>
+        <button className="action-btn" onClick={pinAnswer} disabled={!answer} title="Pin this answer">
+          {justPinned ? "✓ Pinned" : "📌 Pin"}
+        </button>
         <div className="spacer" />
         <div className="ctrl-group length-group" title="Answer length (l)">
           {LENGTHS.map(l => (
@@ -681,8 +1146,16 @@ export default function App() {
         onClose={(saved) => {
           if (saved?.speaker_names) setSpeakerNames(saved.speaker_names);
           setShowSettings(false);
+          refreshCompanyPresets();
         }} />}
       {showHistory  && <HistoryModal  onClose={() => setShowHistory(false)} />}
+      {showPinned   && <PinnedModal   pinned={pinned} onUnpin={unpinAnswer} onClose={() => setShowPinned(false)} />}
+      {showDebrief  && <DebriefModal  text={debriefText} loading={endingSession} onClose={() => setShowDebrief(false)} />}
+      {showQuickDebrief && <QuickDebriefModal
+        alreadyUsed={quickDebriefUsed}
+        onGenerated={runQuickDebrief}
+        onClose={() => setShowQuickDebrief(false)}
+      />}
 
     </div>
   );
