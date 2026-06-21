@@ -1,0 +1,37 @@
+[package]
+name    = "heario"
+version = "0.1.0"
+edition = "2021"
+
+[package.metadata.tauri-winres]
+OriginalFilename = "heario.exe"
+LegalCopyright   = "© 2025 Heario"
+
+[lib]
+name = "heario_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+path = "src/lib.rs"
+
+[[bin]]
+name = "heario"
+path = "src/main.rs"
+
+[build-dependencies]
+tauri-build = { version = "2", features = ["codegen"] }
+
+[dependencies]
+tauri                          = { version = "2", features = ["tray-icon"] }
+tauri-plugin-shell             = "2"
+tauri-plugin-window-state      = "2"
+tauri-plugin-clipboard-manager = "2"
+tauri-plugin-autostart         = "2"
+tauri-plugin-global-shortcut   = "2"
+serde              = { version = "1", features = ["derive"] }
+serde_json         = "1"
+raw-window-handle  = "0.6"
+
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.58", features = [
+  "Win32_Foundation",
+  "Win32_UI_WindowsAndMessaging",
+] }

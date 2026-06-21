@@ -1,0 +1,22 @@
+# Rust / Tauri build output
+/src-tauri/target/
+/src-tauri/gen/
+/src-tauri/webview-dist/
+
+# Node
+/ui/node_modules/
+/ui/dist/
+
+# Sidecar build artifacts
+/sidecar/build/
+/sidecar/dist/
+/sidecar/__pycache__/
+/sidecar/*.exe
+/sidecar/*.spec
+
+# Build logs
+*.log
+
+# Local runtime data (API keys, recorded sessions)
+.env
+/sessions/

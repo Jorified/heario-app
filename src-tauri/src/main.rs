@@ -158,6 +158,49 @@ fn save_settings(settings: Settings) -> Result<(), String> {
     Ok(())
 }
 
+// ── Company presets ───────────────────────────────────────────────────────────
+
+#[derive(serde::Serialize, serde::Deserialize, Clone)]
+struct CompanyPreset {
+    company_name:    String,
+    job_description: String,
+    company_brief:   String,
+    default_mode:    String,
+    mode_prompts:    std::collections::HashMap<String, String>,
+}
+
+fn presets_path() -> std::path::PathBuf {
+    exe_dir().join("company_presets.json")
+}
+
+fn load_presets() -> std::collections::HashMap<String, CompanyPreset> {
+    std::fs::read_to_string(presets_path())
+        .ok()
+        .and_then(|s| serde_json::from_str(&s).ok())
+        .unwrap_or_default()
+}
+
+#[tauri::command]
+fn list_company_presets() -> std::collections::HashMap<String, CompanyPreset> {
+    load_presets()
+}
+
+#[tauri::command]
+fn save_company_preset(name: String, preset: CompanyPreset) -> Result<(), String> {
+    let mut presets = load_presets();
+    presets.insert(name, preset);
+    let json = serde_json::to_string_pretty(&presets).map_err(|e| e.to_string())?;
+    std::fs::write(presets_path(), json).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn delete_company_preset(name: String) -> Result<(), String> {
+    let mut presets = load_presets();
+    presets.remove(&name);
+    let json = serde_json::to_string_pretty(&presets).map_err(|e| e.to_string())?;
+    std::fs::write(presets_path(), json).map_err(|e| e.to_string())
+}
+
 // ── Session history ───────────────────────────────────────────────────────────
 
 #[tauri::command]
@@ -186,6 +229,52 @@ fn read_session(name: String) -> Result<String, String> {
         .to_string();
     std::fs::read_to_string(exe_dir().join("sessions").join(safe))
         .map_err(|e| e.to_string())
+}
+
+#[derive(serde::Serialize)]
+struct SessionMatch {
+    name: String,
+    snippets: Vec<String>,
+}
+
+/// Case-insensitive search across every saved session transcript. Returns, per
+/// matching session, up to 3 short context snippets so the dashboard can show
+/// why a session matched without loading the full transcript first.
+#[tauri::command]
+fn search_sessions(query: String) -> Vec<SessionMatch> {
+    let q = query.trim().to_lowercase();
+    if q.is_empty() {
+        return Vec::new();
+    }
+
+    let mut results: Vec<SessionMatch> = list_sessions()
+        .into_iter()
+        .filter_map(|name| {
+            let text = std::fs::read_to_string(exe_dir().join("sessions").join(&name)).ok()?;
+            let snippets: Vec<String> = text
+                .lines()
+                .filter(|line| line.to_lowercase().contains(&q))
+                .map(|line| {
+                    let trimmed = line.trim();
+                    let truncated: String = trimmed.chars().take(160).collect();
+                    if truncated.chars().count() < trimmed.chars().count() {
+                        format!("{}…", truncated)
+                    } else {
+                        truncated
+                    }
+                })
+                .take(3)
+                .collect();
+            if snippets.is_empty() {
+                None
+            } else {
+                Some(SessionMatch { name, snippets })
+            }
+        })
+        .collect();
+
+    results.sort_by(|a, b| b.name.cmp(&a.name)); // newest first
+    results
 }
 
 // ── Session export ────────────────────────────────────────────────────────────
@@ -256,12 +345,29 @@ fn main() {
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
             None,
         ))
+        .plugin(tauri_plugin_global_shortcut::Builder::new()
+            .with_shortcut("ctrl+shift+h")
+            .unwrap()
+            .with_handler(|app, _shortcut, event| {
+                if event.state() == tauri_plugin_global_shortcut::ShortcutState::Pressed {
+                    if let Some(w) = app.get_webview_window("main") {
+                        if w.is_visible().unwrap_or(false) {
+                            let _ = w.hide();
+                        } else {
+                            let _ = w.show();
+                            let _ = w.set_focus();
+                        }
+                    }
+                }
+            })
+            .build())
         .manage(SidecarState(Mutex::new(child)))
         .invoke_handler(tauri::generate_handler![
             restart_sidecar,
             get_settings, save_settings,
-            list_sessions, read_session, open_sessions_folder,
+            list_sessions, read_session, search_sessions, open_sessions_folder,
             get_autostart, set_autostart,
+            list_company_presets, save_company_preset, delete_company_preset,
         ])
         .setup(|app| {
             let window = app.get_webview_window("main").unwrap();

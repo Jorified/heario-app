@@ -5,8 +5,8 @@
   "build": {
     "frontendDist": "../ui/dist",
     "devUrl": "http://localhost:1420",
-    "beforeDevCommand": "npm run dev --prefix ./ui",
-    "beforeBuildCommand": "npm run build --prefix ./ui"
+    "beforeDevCommand": "npm --prefix C:/Users/jacko/heario-app/ui run dev",
+    "beforeBuildCommand": "npm --prefix C:/Users/jacko/heario-app/ui run build"
   },
   "app": {
     "windows": [
