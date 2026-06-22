@@ -149,19 +149,19 @@ function SettingsModal({ onClose, liveBrief, onResearch, researching }) {
               <span>Anthropic</span>
               <input type="password" value={form.anthropic_key}
                 onChange={e => setForm(f => ({...f, anthropic_key: e.target.value}))}
-                placeholder="sk-ant-api03-…" />
+                placeholder="Add your own" />
             </label>
             <label className="settings-field">
               <span>OpenAI</span>
               <input type="password" value={form.openai_key}
                 onChange={e => setForm(f => ({...f, openai_key: e.target.value}))}
-                placeholder="sk-…" />
+                placeholder="Add your own" />
             </label>
             <label className="settings-field">
-              <span>Deepgram <em style={{fontWeight:'normal',opacity:.7}}>(optional)</em></span>
+              <span>Deepgram</span>
               <input type="password" value={form.deepgram_key}
                 onChange={e => setForm(f => ({...f, deepgram_key: e.target.value}))}
-                placeholder="40-char hex key" />
+                placeholder="Add your own" />
             </label>
             <label className="settings-field">
               <span>Web Search</span>
