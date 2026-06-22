@@ -28,6 +28,7 @@ function SettingsModal({ onClose, liveBrief, onResearch, researching }) {
     mock_interview: "You are a tough but fair mock interview coach. When the user gives a response, point out what was weak or vague, suggest a stronger phrasing or missing detail, and ask a follow-up question a real interviewer would ask. Be direct and specific — no padding.",
   };
   const [form, setForm] = useState({
+    license_key:"",
     anthropic_key:"", openai_key:"", deepgram_key:"", tavily_key:"",
     llm_provider:"anthropic", context:"", job_description:"",
     company_name:"", company_brief:"",
@@ -123,6 +124,17 @@ function SettingsModal({ onClose, liveBrief, onResearch, researching }) {
         </div>
 
         <div className="modal-body">
+          <section className="settings-section">
+            <div className="settings-label">License</div>
+            <label className="settings-field">
+              <span>License Key</span>
+              <input type="text" value={form.license_key}
+                onChange={e => setForm(f => ({...f, license_key: e.target.value}))}
+                placeholder="HEAR-XXXX-XXXX-XXXX (from your purchase email)" />
+            </label>
+            <div className="settings-hint">On a paid plan? Paste the key emailed to you to use Heario's managed AI — no API key needed below. Otherwise leave blank and bring your own Anthropic key.</div>
+          </section>
+
           <section className="settings-section">
             <div className="settings-label">AI Provider</div>
             <label className="settings-field">

@@ -38,6 +38,7 @@ fn exe_dir() -> std::path::PathBuf {
 
 #[derive(serde::Serialize, serde::Deserialize)]
 struct Settings {
+    license_key:      String,
     anthropic_key:    String,
     openai_key:       String,
     deepgram_key:     String,
@@ -60,6 +61,7 @@ struct Settings {
 fn get_settings() -> Result<Settings, String> {
     let dir = exe_dir();
     let mut s = Settings {
+        license_key:     String::new(),
         anthropic_key:   String::new(),
         openai_key:      String::new(),
         deepgram_key:    String::new(),
@@ -88,6 +90,7 @@ fn get_settings() -> Result<Settings, String> {
             if line.trim().starts_with('#') { continue; }
             if let Some((k, v)) = line.split_once('=') {
                 match k.trim() {
+                    "LICENSE_KEY"       => s.license_key   = v.trim().to_string(),
                     "ANTHROPIC_API_KEY" => s.anthropic_key = v.trim().to_string(),
                     "OPENAI_API_KEY"    => s.openai_key    = v.trim().to_string(),
                     "DEEPGRAM_API_KEY"  => s.deepgram_key  = v.trim().to_string(),
@@ -123,7 +126,7 @@ fn save_settings(settings: Settings) -> Result<(), String> {
     let env_path = dir.join(".env");
 
     // Read existing .env and preserve any keys we don't manage
-    const MANAGED: &[&str] = &["ANTHROPIC_API_KEY","OPENAI_API_KEY","DEEPGRAM_API_KEY","TAVILY_API_KEY","LLM_PROVIDER","TARGET_SPEAKER","USER_SPEAKER","COMPANY_NAME","MODE","AUDIO_SOURCE","STT_BACKEND","SPEAKER_NAMES"];
+    const MANAGED: &[&str] = &["LICENSE_KEY","ANTHROPIC_API_KEY","OPENAI_API_KEY","DEEPGRAM_API_KEY","TAVILY_API_KEY","LLM_PROVIDER","TARGET_SPEAKER","USER_SPEAKER","COMPANY_NAME","MODE","AUDIO_SOURCE","STT_BACKEND","SPEAKER_NAMES"];
     let mut preserved: Vec<String> = vec![];
     if let Ok(content) = std::fs::read_to_string(&env_path) {
         for line in content.lines() {
@@ -140,8 +143,8 @@ fn save_settings(settings: Settings) -> Result<(), String> {
     let mut out = preserved.join("\n");
     if !out.is_empty() { out.push('\n'); }
     out.push_str(&format!(
-        "ANTHROPIC_API_KEY={}\nOPENAI_API_KEY={}\nDEEPGRAM_API_KEY={}\nTAVILY_API_KEY={}\nLLM_PROVIDER={}\nTARGET_SPEAKER={}\nUSER_SPEAKER={}\nCOMPANY_NAME={}\nMODE={}\nAUDIO_SOURCE={}\nSTT_BACKEND={}\nSPEAKER_NAMES={}\n",
-        settings.anthropic_key, settings.openai_key, settings.deepgram_key, settings.tavily_key,
+        "LICENSE_KEY={}\nANTHROPIC_API_KEY={}\nOPENAI_API_KEY={}\nDEEPGRAM_API_KEY={}\nTAVILY_API_KEY={}\nLLM_PROVIDER={}\nTARGET_SPEAKER={}\nUSER_SPEAKER={}\nCOMPANY_NAME={}\nMODE={}\nAUDIO_SOURCE={}\nSTT_BACKEND={}\nSPEAKER_NAMES={}\n",
+        settings.license_key, settings.anthropic_key, settings.openai_key, settings.deepgram_key, settings.tavily_key,
         settings.llm_provider, settings.target_speaker, settings.user_speaker,
         settings.company_name, settings.default_mode, settings.audio_source,
         settings.stt_backend, settings.speaker_names.join(","),
