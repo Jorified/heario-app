@@ -17,7 +17,7 @@ const FULL_SIZE      = { width: 580, height: 400 };
 const DISCREET_SIZE  = { width: 200, height: 34 };
 
 // ── Settings Modal ────────────────────────────────────────────────────────────
-function SettingsModal({ onClose, liveBrief, onResearch, researching }) {
+function SettingsModal({ onClose, liveBrief, onResearch, researching, researchError }) {
   const DEFAULT_PROMPTS = {
     technical_interview: "You are a silent assistant helping the user pass a live technical interview. Given the interviewer's latest question, produce a crisp, correct answer the user can speak in ~20-40 seconds. Prefer concrete examples. If it's a coding question, give the approach + key code, not an essay.",
     behavioral: "You help the user answer behavioral interview questions using the STAR method, grounded in the user's real background below. Keep it to one tight, specific story.",
@@ -203,6 +203,7 @@ function SettingsModal({ onClose, liveBrief, onResearch, researching }) {
               onClick={() => onResearch(form.company_name.trim())}>
               {researching ? "Researching…" : "🔍 Research"}
             </button>
+            {researchError && <span className="quick-debrief-error">{researchError}</span>}
             {(liveBrief || form.company_brief) && (
               <textarea className="settings-textarea" rows={6} readOnly
                 value={liveBrief || form.company_brief} />
@@ -802,6 +803,7 @@ export default function App() {
   const [length,       setLength]      = useState("normal");
   const [companyBrief, setCompanyBrief]= useState("");
   const [researching,  setResearching] = useState(false);
+  const [researchError, setResearchError] = useState("");
   const [discreetMode, setDiscreetMode]= useState(false);
   const [pinned,       setPinned]      = useState([]);
   const [showPinned,   setShowPinned]  = useState(false);
@@ -879,6 +881,7 @@ export default function App() {
         case "length": setLength(ev.length); break;
         case "research_done":
           setCompanyBrief(ev.brief || "");
+          setResearchError(ev.error ? "Couldn't research that company — web search is unavailable right now. Try again in a moment." : "");
           setResearching(false);
           break;
         case "confidence": setConfidence(ev.score); break;
@@ -1233,7 +1236,8 @@ export default function App() {
       {showSettings && <SettingsModal
         liveBrief={companyBrief}
         researching={researching}
-        onResearch={name => { setResearching(true); send({ cmd: "research_company", name }); }}
+        researchError={researchError}
+        onResearch={name => { setResearchError(""); setResearching(true); send({ cmd: "research_company", name }); }}
         onClose={(saved) => {
           if (saved?.speaker_names) setSpeakerNames(saved.speaker_names);
           setHasLicense(!!saved?.license_key?.trim());
