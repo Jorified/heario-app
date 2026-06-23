@@ -37,7 +37,7 @@ import time
 import websockets
 
 # ── path: allow importing the existing pipeline ──────────────────────────────
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "heario-poc"))  # pipeline lives here; folder rename tracked separately
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "heario-poc"))  # pipeline lives here
 
 import assistant
 from answer_history import AnswerHistory
