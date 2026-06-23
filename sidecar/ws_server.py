@@ -55,6 +55,10 @@ _connected: set = set()
 _pipeline_started = False
 _paused = False
 _web_enabled = False
+# Wall-clock time of the last real transcript. The free-plan STT meter charges
+# only windows that actually contained speech, so leaving the app open in
+# silence doesn't burn the 20-min quota.
+_last_transcript_ts = 0.0
 
 from config import USER_SPEAKER as _USER_SPEAKER_CFG
 _user_speaker: "int | None" = (
@@ -67,9 +71,10 @@ _USER_PAUSE_SECS: float = 2.5
 # ── pipeline callbacks ────────────────────────────────────────────────────────
 
 def on_transcript(speaker, text):
-    global _user_last_spoke
+    global _user_last_spoke, _last_transcript_ts
     if _paused:
         return
+    _last_transcript_ts = time.time()   # marks this window as "active" for STT metering
     from assistant import looks_like_question
     is_q = looks_like_question(text)
 
@@ -258,26 +263,35 @@ def _emit_stt_limit():
     _events.put({"type": "status", "state": "stt_limit"})
 
 
-def _start_stt_meter(stop_evt: threading.Event):
-    """Charge wall-clock transcription time against the free-plan STT quota.
+def _start_stt_meter(stop_evt: threading.Event, tick_seconds: int = 30):
+    """Charge *active* transcription time against the free-plan STT quota.
 
-    Ticks every 30s while the pipeline runs; when the cap is crossed it sets
-    stop_evt (which halts whichever STT backend is active) and notifies the UI.
-    Runs only for free users — the caller gates on stt_quota.is_metered()."""
+    Ticks every `tick_seconds`, but only spends quota for windows that actually
+    contained speech (a transcript arrived since the previous tick) — so leaving
+    the app open in silence doesn't burn the 20-min cap. When the cap is crossed
+    it sets stop_evt (which halts whichever STT backend is active) and notifies
+    the UI. Runs only for free users — caller gates on stt_quota.is_metered().
+    `tick_seconds` is injectable so tests can drive it without real-time waits."""
     import stt_quota
 
     def run():
-        TICK = 30
+        window_start = time.time()
         while not stop_evt.is_set():
-            if stop_evt.wait(TICK):
+            if stop_evt.wait(tick_seconds):
                 break  # process exiting
-            remaining = stt_quota.add_usage(TICK)
+            had_speech = _last_transcript_ts > window_start
+            window_start = time.time()
+            if not had_speech:
+                continue  # silent window — don't spend quota
+            remaining = stt_quota.add_usage(tick_seconds)
             if remaining is not None and remaining <= 0:
                 stop_evt.set()      # stop all STT backends
                 _emit_stt_limit()
                 break
 
-    threading.Thread(target=run, daemon=True).start()
+    t = threading.Thread(target=run, daemon=True)
+    t.start()
+    return t
 
 
 def _start_pipeline():
