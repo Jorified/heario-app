@@ -44,7 +44,7 @@ The overlay is always-on-top, frameless, transparent, and invisible to screen-sh
 ```powershell
 cd C:\Users\jacko\heario-app
 cargo tauri build
-# Output: src-tauri/target/release/bundle/nsis/Heario_0.1.0_x64-setup.exe
+# Output: src-tauri/target/release/bundle/nsis/Heario_0.1.4_x64-setup.exe
 ```
 
 ## Architecture recap

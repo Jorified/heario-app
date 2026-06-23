@@ -1,5 +1,5 @@
 # PyInstaller spec for the Heario sidecar.
-# Bundles ws_server.py + the entire heario-poc pipeline into a single .exe
+# Bundles ws_server.py + the entire pipeline into a single .exe
 # that Tauri can spawn with no Python installation required.
 
 import os
