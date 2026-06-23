@@ -639,6 +639,49 @@ function DebriefModal({ text, loading, paywalled, onClose }) {
 const QUICK_DEBRIEF_KEY = "heario_quick_debrief_used";
 const QUICK_DEBRIEF_TEXT_KEY = "heario_quick_debrief_text";
 const END_DEBRIEF_KEY = "heario_end_debrief_used";
+const NOTES_KEY = "heario_notes";
+
+// turns free-typed notes into a "NOTES" section matching the debrief's own
+// ALL-CAPS-header format, so parseDebrief/downloadDebriefPDF render it identically
+function appendNotesSection(debriefText, notes) {
+  const trimmed = (notes || "").trim();
+  if (!trimmed) return debriefText;
+  const bullets = trimmed.split("\n").map(l => l.trim()).filter(Boolean).map(l => `- ${l}`).join("\n");
+  return `${debriefText}\n\nNOTES\n${bullets}`;
+}
+
+// ── Notes Modal (free-typed notes, carried into the next debrief) ───────────
+function NotesModal({ notes, onChange, onClose }) {
+  return (
+    <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
+      <div className="modal modal-wide">
+        <div className="modal-header">
+          <span>📓 Notes</span>
+          <button className="modal-close" onClick={onClose}>✕</button>
+        </div>
+        <div className="modal-body">
+          <span className="settings-hint">
+            Jot down anything worth remembering — it's added as a NOTES section to your next
+            Quick Debrief or Practice Recap.
+          </span>
+          <textarea
+            className="settings-textarea"
+            rows={10}
+            autoFocus
+            placeholder="e.g. forgot to mention the caching layer on the scaling question…"
+            value={notes}
+            onChange={e => onChange(e.target.value)}
+          />
+        </div>
+        {notes.trim() && (
+          <div className="modal-footer">
+            <button className="action-btn" onClick={() => onChange("")}>Clear notes</button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
 
 // ── Quick Debrief Modal (free, one-time typed-Q&A teaser) ────────────────────
 function QuickDebriefModal({ onClose, onGenerated, alreadyUsed }) {
@@ -773,6 +816,10 @@ export default function App() {
   const [endDebriefUsed, setEndDebriefUsed] = useState(() => localStorage.getItem(END_DEBRIEF_KEY) === "1");
   const [debriefPaywalled, setDebriefPaywalled] = useState(false);
   const [hasLicense, setHasLicense] = useState(false);
+  const [showNotes, setShowNotes] = useState(false);
+  const [notes, setNotes] = useState(() => localStorage.getItem(NOTES_KEY) || "");
+  const notesRef = useRef(notes);
+  useEffect(() => { notesRef.current = notes; localStorage.setItem(NOTES_KEY, notes); }, [notes]);
 
   const refreshCompanyPresets = useCallback(() => {
     invoke("list_company_presets").then(setCompanyPresets).catch(() => {});
@@ -855,7 +902,7 @@ export default function App() {
         case "session_end":
           clearTimeout(endSessionTimer.current);
           setEndingSession(false);
-          setDebriefText(ev.debrief || ev.summary || "");
+          setDebriefText(appendNotesSection(ev.debrief || ev.summary || "", notesRef.current));
           setShowDebrief(true);
           if (ev.debrief) {
             localStorage.setItem(END_DEBRIEF_KEY, "1");
@@ -867,7 +914,7 @@ export default function App() {
           // guard: if the 30s timeout already fired (ref cleared) or a retry replaced it,
           // a late/stale response must not silently consume the user's one free use
           if (quickDebriefResolveRef.current) {
-            quickDebriefResolveRef.current({ text: ev.debrief || "" });
+            quickDebriefResolveRef.current({ text: appendNotesSection(ev.debrief || "", notesRef.current) });
             quickDebriefResolveRef.current = null;
             localStorage.setItem(QUICK_DEBRIEF_KEY, "1");
             setQuickDebriefUsed(true);
@@ -913,13 +960,14 @@ export default function App() {
   // ── keyboard shortcuts ────────────────────────────────────────────────────
   useEffect(() => {
     const onKey = e => {
-      if (showSettings || showHistory) return;
+      if (showSettings || showHistory || showNotes) return;
       if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA") return;
       if (e.key === "/") { e.preventDefault(); askRef.current?.focus(); return; }
       if (e.key === "p") togglePause();
       if (e.key === "m") cycleMode();
       if (e.key === "w") toggleWeb();
       if (e.key === "a") toggleAnswers();
+      if (e.key === "n") setShowNotes(true);
       if (e.key === "l") cycleLength();
       if (e.key === "r") regenerate();
       if (e.key === "c") clear();
@@ -1083,6 +1131,9 @@ export default function App() {
             {endingSession ? "⏳" : "📝"}
           </button>
           <button className="icon-btn" onClick={() => setShowQuickDebrief(true)} title="Practice Recap — free, no session needed">✍️</button>
+          <button className="icon-btn" onClick={() => setShowNotes(true)} title="Take Notes — n (added to your next debrief)">
+            📓{notes.trim() && <span className="badge">•</span>}
+          </button>
           <button className="icon-btn settings-btn" onClick={() => setShowSettings(true)} title="Settings">⚙ Settings</button>
         </div>
       </div>
@@ -1197,6 +1248,7 @@ export default function App() {
         onGenerated={runQuickDebrief}
         onClose={() => setShowQuickDebrief(false)}
       />}
+      {showNotes && <NotesModal notes={notes} onChange={setNotes} onClose={() => setShowNotes(false)} />}
 
     </div>
   );
