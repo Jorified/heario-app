@@ -247,6 +247,39 @@ def handle_cmd(msg: dict):
 
 # ── websocket handler ─────────────────────────────────────────────────────────
 
+_STT_LIMIT_MSG = ("🔒 Free speech-to-text limit (20 min) reached. "
+                  "Upgrade at heario.ai/#pricing to keep transcribing.")
+
+
+def _emit_stt_limit():
+    """Tell the UI the free STT cap is hit — a transcript banner plus a status."""
+    _events.put({"type": "transcript", "speaker": None, "text": _STT_LIMIT_MSG,
+                 "is_question": False, "answered": False})
+    _events.put({"type": "status", "state": "stt_limit"})
+
+
+def _start_stt_meter(stop_evt: threading.Event):
+    """Charge wall-clock transcription time against the free-plan STT quota.
+
+    Ticks every 30s while the pipeline runs; when the cap is crossed it sets
+    stop_evt (which halts whichever STT backend is active) and notifies the UI.
+    Runs only for free users — the caller gates on stt_quota.is_metered()."""
+    import stt_quota
+
+    def run():
+        TICK = 30
+        while not stop_evt.is_set():
+            if stop_evt.wait(TICK):
+                break  # process exiting
+            remaining = stt_quota.add_usage(TICK)
+            if remaining is not None and remaining <= 0:
+                stop_evt.set()      # stop all STT backends
+                _emit_stt_limit()
+                break
+
+    threading.Thread(target=run, daemon=True).start()
+
+
 def _start_pipeline():
     """Start the Deepgram STT + answer pipeline in a background thread (once only)."""
     global _pipeline_started
@@ -255,7 +288,18 @@ def _start_pipeline():
     _pipeline_started = True
 
     from config import STT_BACKEND, DEEPGRAM_API_KEY, OPENAI_API_KEY
-    stop_evt = threading.Event()   # never set — runs for the lifetime of the process
+    # Set when STT must stop: process exit OR the free-plan STT cap being hit.
+    stop_evt = threading.Event()
+
+    # Free-plan speech-to-text cap (20 min). Metered here, at the one dispatch
+    # point shared by all three STT backends, so switching to local Whisper can't
+    # bypass it. Paid (license-key) users are unmetered and skip this entirely.
+    import stt_quota
+    if stt_quota.is_metered():
+        if (stt_quota.remaining_seconds() or 0) <= 0:
+            _emit_stt_limit()
+            return  # already exhausted — don't start transcription at all
+        _start_stt_meter(stop_evt)
 
     use_deepgram   = bool(DEEPGRAM_API_KEY) and STT_BACKEND in ("deepgram", "auto")
     use_openai_stt = not use_deepgram and bool(OPENAI_API_KEY) and STT_BACKEND in ("openai", "auto")
