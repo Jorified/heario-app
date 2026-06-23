@@ -26,7 +26,7 @@ a = Analysis(
     ] + datas_ct2 + datas_fw + datas_tok + datas_ort,
     hiddenimports=[
         'assistant', 'config', 'capture', 'transcribe', 'stream_stt', 'local_whisper_stt', 'openai_whisper_stt',
-        'search',
+        'search', 'stt_quota',
         'duckduckgo_search', 'duckduckgo_search.compat',
         'diarize', 'session_log', 'answer_history',
         'pyaudiowpatch', 'anthropic', 'deepgram', 'openai',
