@@ -71,6 +71,10 @@ body {
 .web-btn                { color: var(--muted); }
 .web-btn.web-active     { color: #7fd1ff; border-color: #7fd1ff; }
 .web-btn.web-active:hover { filter: brightness(1.2); }
+.answers-btn            { color: var(--accent2); border-color: var(--accent2); }
+.answers-btn:hover      { filter: brightness(1.2); }
+.answers-btn.answers-off { color: var(--muted); border-color: var(--border); }
+.answers-btn.answers-off:hover { color: var(--accent2); border-color: var(--accent2); filter: none; }
 
 .company-select {
   background: var(--bg2); border: 1px solid var(--border); border-radius: 20px;

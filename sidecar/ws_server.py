@@ -12,10 +12,12 @@ Messages are newline-delimited JSON.  Server → client events:
   {"type": "history",     "pos": 2, "total": 3, "question": "...", "answer": "..."}
   {"type": "session_end", "summary": "...", "debrief": "..."}
   {"type": "web",         "enabled": true}
+  {"type": "answers",     "enabled": true}
 
 Client → server commands:
   {"cmd": "cycle_mode"}
   {"cmd": "toggle_web"}
+  {"cmd": "toggle_answers"}
   {"cmd": "regenerate"}
   {"cmd": "clear"}
   {"cmd": "nav", "delta": -1}
@@ -55,6 +57,9 @@ _connected: set = set()
 _pipeline_started = False
 _paused = False
 _web_enabled = False
+# When False, transcription keeps running but no AI answers are generated —
+# lets STT-only users avoid burning their AI-request quota on auto-answered questions.
+_answers_enabled = True
 # Wall-clock time of the last real transcript. The free-plan STT meter charges
 # only windows that actually contained speech, so leaving the app open in
 # silence doesn't burn the 20-min quota.
@@ -87,7 +92,7 @@ def on_transcript(speaker, text):
         (time.time() - _user_last_spoke) < _USER_PAUSE_SECS
     )
 
-    answered = is_q and not suppress
+    answered = is_q and not suppress and _answers_enabled
     _events.put({"type": "transcript", "speaker": speaker, "text": text,
                  "is_question": is_q, "answered": answered})
     _hist.set_pending(f"S{speaker} Q: {text}" if speaker is not None else f"Q: {text}")
@@ -151,7 +156,7 @@ def _push_mode():
 # ── command handlers ──────────────────────────────────────────────────────────
 
 def handle_cmd(msg: dict):
-    global _paused, _web_enabled
+    global _paused, _web_enabled, _answers_enabled
     cmd = msg.get("cmd")
     if cmd == "pause":
         _paused = True
@@ -162,6 +167,9 @@ def handle_cmd(msg: dict):
     elif cmd == "toggle_web":
         _web_enabled = not _web_enabled
         _events.put({"type": "web", "enabled": _web_enabled})
+    elif cmd == "toggle_answers":
+        _answers_enabled = not _answers_enabled
+        _events.put({"type": "answers", "enabled": _answers_enabled})
     elif cmd == "research_company":
         company_name = msg.get("name", "").strip()
         if not company_name:
@@ -382,6 +390,7 @@ async def handler(ws):
     await ws.send(json.dumps({"type": "mode",   "mode":    assistant.current_mode()}))
     await ws.send(json.dumps({"type": "length", "length":  assistant.current_length()}))
     await ws.send(json.dumps({"type": "status", "state":   "paused" if _paused else "listening"}))
+    await ws.send(json.dumps({"type": "answers", "enabled": _answers_enabled}))
     # Start the audio pipeline on first connection
     if not _pipeline_started:
         _start_pipeline()

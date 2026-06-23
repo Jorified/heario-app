@@ -592,11 +592,11 @@ function downloadDebriefPDF(text, title = "Heario Debrief") {
   doc.save(`heario-debrief-${Date.now()}.pdf`);
 }
 
-function DebriefModal({ text, loading, onClose }) {
+function DebriefModal({ text, loading, paywalled, onClose }) {
   const [exported, setExported] = useState(false);
 
   const savePDF = () => {
-    downloadDebriefPDF(text, "Heario Debrief");
+    downloadDebriefPDF(text, "Heario Quick Debrief");
     setExported(true);
     setTimeout(() => setExported(false), 2000);
   };
@@ -605,8 +605,8 @@ function DebriefModal({ text, loading, onClose }) {
     <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
       <div className="modal modal-wide">
         <div className="modal-header">
-          <span>📝 Post-Interview Debrief</span>
-          {!loading && text && (
+          <span>📝 Quick Debrief</span>
+          {!loading && !paywalled && text && (
             <button className="action-btn" onClick={savePDF}>
               {exported ? "✓ Saved" : "⬇ PDF"}
             </button>
@@ -614,7 +614,13 @@ function DebriefModal({ text, loading, onClose }) {
           <button className="modal-close" onClick={onClose}>✕</button>
         </div>
         <div className="modal-body">
-          {loading ? (
+          {paywalled ? (
+            <span className="placeholder">
+              You've used your free Quick Debrief. Upgrade to a paid plan for a debrief after
+              every session, unlimited — enter your license key in Settings, or get one at{" "}
+              <a href="https://heario.ai/#pricing" target="_blank" rel="noreferrer">heario.ai/#pricing</a>.
+            </span>
+          ) : loading ? (
             <span className="placeholder">Generating debrief…</span>
           ) : parseDebrief(text).map((s, i) => (
             <div key={i} className="debrief-section">
@@ -632,6 +638,7 @@ function DebriefModal({ text, loading, onClose }) {
 
 const QUICK_DEBRIEF_KEY = "heario_quick_debrief_used";
 const QUICK_DEBRIEF_TEXT_KEY = "heario_quick_debrief_text";
+const END_DEBRIEF_KEY = "heario_end_debrief_used";
 
 // ── Quick Debrief Modal (free, one-time typed-Q&A teaser) ────────────────────
 function QuickDebriefModal({ onClose, onGenerated, alreadyUsed }) {
@@ -654,7 +661,7 @@ function QuickDebriefModal({ onClose, onGenerated, alreadyUsed }) {
   };
 
   const savePDF = () => {
-    downloadDebriefPDF(result, "Heario Quick Debrief");
+    downloadDebriefPDF(result, "Heario Practice Recap");
     setExported(true);
     setTimeout(() => setExported(false), 2000);
   };
@@ -663,7 +670,7 @@ function QuickDebriefModal({ onClose, onGenerated, alreadyUsed }) {
     <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
       <div className="modal modal-wide">
         <div className="modal-header">
-          <span>✍️ Quick Debrief</span>
+          <span>✍️ Practice Recap</span>
           {result && !loading && (
             <button className="action-btn" onClick={savePDF}>
               {exported ? "✓ Saved" : "⬇ PDF"}
@@ -674,7 +681,7 @@ function QuickDebriefModal({ onClose, onGenerated, alreadyUsed }) {
         <div className="modal-body">
           {alreadyUsed && !result ? (
             <span className="placeholder">
-              You've used your free Quick Debrief. Start a live session to get a debrief
+              You've used your free Practice Recap. Start a live session to get a debrief
               after every interview, unlimited.
             </span>
           ) : loading ? (
@@ -737,6 +744,7 @@ export default function App() {
   const [wsState,      setWsState]     = useState("connecting");
   const [paused,       setPaused]      = useState(false);
   const [webEnabled,   setWebEnabled]  = useState(false);
+  const [answersEnabled, setAnswersEnabled] = useState(true);
   const [fontIdx,      setFontIdx]     = useState(2);
   const [opacityIdx,   setOpacityIdx]  = useState(5);
   const [copied,       setCopied]      = useState(false);
@@ -762,6 +770,9 @@ export default function App() {
   const [showQuickDebrief, setShowQuickDebrief] = useState(false);
   const [quickDebriefUsed, setQuickDebriefUsed] = useState(() => localStorage.getItem(QUICK_DEBRIEF_KEY) === "1");
   const quickDebriefResolveRef = useRef(null);
+  const [endDebriefUsed, setEndDebriefUsed] = useState(() => localStorage.getItem(END_DEBRIEF_KEY) === "1");
+  const [debriefPaywalled, setDebriefPaywalled] = useState(false);
+  const [hasLicense, setHasLicense] = useState(false);
 
   const refreshCompanyPresets = useCallback(() => {
     invoke("list_company_presets").then(setCompanyPresets).catch(() => {});
@@ -817,6 +828,7 @@ export default function App() {
           break;
         case "mode": setMode(ev.mode); break;
         case "web":    setWebEnabled(ev.enabled); break;
+        case "answers": setAnswersEnabled(ev.enabled); break;
         case "length": setLength(ev.length); break;
         case "research_done":
           setCompanyBrief(ev.brief || "");
@@ -845,6 +857,10 @@ export default function App() {
           setEndingSession(false);
           setDebriefText(ev.debrief || ev.summary || "");
           setShowDebrief(true);
+          if (ev.debrief) {
+            localStorage.setItem(END_DEBRIEF_KEY, "1");
+            setEndDebriefUsed(true);
+          }
           break;
         case "quick_debrief_result":
           clearTimeout(quickDebriefTimer.current);
@@ -866,6 +882,7 @@ export default function App() {
   useEffect(() => {
     invoke("get_settings").then(s => {
       if (s.speaker_names?.length) setSpeakerNames(s.speaker_names);
+      setHasLicense(!!s.license_key?.trim());
     }).catch(() => {});
   }, []);
 
@@ -876,6 +893,7 @@ export default function App() {
   const togglePause = ()  => send({ cmd: pausedRef.current ? "resume" : "pause" });
   const cycleMode   = ()  => send({ cmd: "cycle_mode" });
   const toggleWeb   = ()  => send({ cmd: "toggle_web" });
+  const toggleAnswers = () => send({ cmd: "toggle_answers" });
   const regenerate  = ()  => { setAnswer(""); setConfidence(0); send({ cmd: "regenerate" }); };
   const clear       = ()  => { setAnswer(""); setConfidence(0); send({ cmd: "clear" }); };
   const nav         = d   => send({ cmd: "nav", delta: d });
@@ -901,6 +919,7 @@ export default function App() {
       if (e.key === "p") togglePause();
       if (e.key === "m") cycleMode();
       if (e.key === "w") toggleWeb();
+      if (e.key === "a") toggleAnswers();
       if (e.key === "l") cycleLength();
       if (e.key === "r") regenerate();
       if (e.key === "c") clear();
@@ -932,6 +951,11 @@ export default function App() {
 
   const endSession  = () => {
     if (wsState !== "open") return; // nothing to end if we're not connected
+    if (!hasLicense && endDebriefUsed) {
+      setDebriefPaywalled(true); setShowDebrief(true);
+      return;
+    }
+    setDebriefPaywalled(false);
     setEndingSession(true); setDebriefText(""); setShowDebrief(true);
     send({ cmd: "end_session" });
     // safety net: don't leave the button/modal stuck forever if the sidecar never replies
@@ -1032,6 +1056,10 @@ export default function App() {
             onClick={toggleWeb} title="w — toggle web search">
             🔍{webEnabled ? " Web On" : " Web"}
           </button>
+          <button className={`pill-btn answers-btn${answersEnabled ? "" : " answers-off"}`}
+            onClick={toggleAnswers} title="a — toggle AI answers (transcription always stays on)">
+            {answersEnabled ? "💬 Answers" : "📝 Transcribe Only"}
+          </button>
           <button className="pill-btn" onClick={cycleMode} title="m — cycle mode">
             {MODE_ICONS[mode]} {MODE_LABELS[mode] ?? mode}
           </button>
@@ -1051,10 +1079,10 @@ export default function App() {
             📌{pinned.length > 0 && <span className="badge">{pinned.length}</span>}
           </button>
           <button className="icon-btn" onClick={() => setShowHistory(true)} title="Session history">🕐</button>
-          <button className="icon-btn" onClick={endSession} disabled={endingSession} title="End session & get a debrief">
+          <button className="icon-btn" onClick={endSession} disabled={endingSession} title="Quick Debrief — end session & get a debrief">
             {endingSession ? "⏳" : "📝"}
           </button>
-          <button className="icon-btn" onClick={() => setShowQuickDebrief(true)} title="Quick Debrief — free, no session needed">✍️</button>
+          <button className="icon-btn" onClick={() => setShowQuickDebrief(true)} title="Practice Recap — free, no session needed">✍️</button>
           <button className="icon-btn settings-btn" onClick={() => setShowSettings(true)} title="Settings">⚙ Settings</button>
         </div>
       </div>
@@ -1157,12 +1185,13 @@ export default function App() {
         onResearch={name => { setResearching(true); send({ cmd: "research_company", name }); }}
         onClose={(saved) => {
           if (saved?.speaker_names) setSpeakerNames(saved.speaker_names);
+          setHasLicense(!!saved?.license_key?.trim());
           setShowSettings(false);
           refreshCompanyPresets();
         }} />}
       {showHistory  && <HistoryModal  onClose={() => setShowHistory(false)} />}
       {showPinned   && <PinnedModal   pinned={pinned} onUnpin={unpinAnswer} onClose={() => setShowPinned(false)} />}
-      {showDebrief  && <DebriefModal  text={debriefText} loading={endingSession} onClose={() => setShowDebrief(false)} />}
+      {showDebrief  && <DebriefModal  text={debriefText} loading={endingSession} paywalled={debriefPaywalled} onClose={() => { setShowDebrief(false); setDebriefPaywalled(false); }} />}
       {showQuickDebrief && <QuickDebriefModal
         alreadyUsed={quickDebriefUsed}
         onGenerated={runQuickDebrief}
