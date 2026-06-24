@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { listen } from "@tauri-apps/api/event";
 import { LogicalSize } from "@tauri-apps/api/dpi";
 import { invoke } from "@tauri-apps/api/core";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
@@ -928,6 +929,18 @@ export default function App() {
   }, []);
 
   useEffect(() => { connect(); return () => { clearTimeout(reconnectTimer.current); clearTimeout(endSessionTimer.current); clearTimeout(quickDebriefTimer.current); }; }, [connect]);
+
+  // Tray "Quit" gives the sidecar a brief grace window to export any
+  // in-progress transcript before the process actually exits.
+  useEffect(() => {
+    let unlisten;
+    listen("request-quit-export", () => {
+      if (ws.current?.readyState === WebSocket.OPEN) {
+        ws.current.send(JSON.stringify({ cmd: "quit" }));
+      }
+    }).then(fn => { unlisten = fn; });
+    return () => unlisten?.();
+  }, []);
 
   useEffect(() => {
     invoke("get_settings").then(s => {

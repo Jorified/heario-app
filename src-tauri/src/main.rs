@@ -6,7 +6,7 @@ use std::sync::Mutex;
 use tauri::{
     menu::{Menu, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
-    Manager,
+    Emitter, Manager,
 };
 
 #[cfg(target_os = "windows")]
@@ -401,7 +401,19 @@ fn main() {
                             let _ = w.set_focus();
                         }
                     }
-                    "quit" => app.exit(0),
+                    "quit" => {
+                        // Give the sidecar a brief window to export any
+                        // in-progress transcript before the process dies —
+                        // otherwise an unsaved session is silently lost.
+                        if let Some(w) = app.get_webview_window("main") {
+                            let _ = w.emit("request-quit-export", ());
+                        }
+                        let app2 = app.clone();
+                        std::thread::spawn(move || {
+                            std::thread::sleep(std::time::Duration::from_millis(500));
+                            app2.exit(0);
+                        });
+                    }
                     _ => {}
                 })
                 .on_tray_icon_event(|tray, event| {
