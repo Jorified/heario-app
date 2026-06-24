@@ -345,9 +345,18 @@ fn spawn_sidecar() -> Result<Child, String> {
 // ── Main ──────────────────────────────────────────────────────────────────────
 
 fn main() {
-    let child = spawn_sidecar().ok();
-
     tauri::Builder::default()
+        // Relaunching the exe while an instance is already running (e.g. via
+        // the desktop icon, after closing to tray) would otherwise spawn a
+        // doomed second instance that panics on the global-shortcut
+        // registration and exits silently — looking like "won't reopen".
+        // Instead, just bring the existing window back.
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            if let Some(w) = app.get_webview_window("main") {
+                let _ = w.show();
+                let _ = w.set_focus();
+            }
+        }))
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_window_state::Builder::new().build())
         .plugin(tauri_plugin_clipboard_manager::init())
@@ -371,7 +380,7 @@ fn main() {
                 }
             })
             .build())
-        .manage(SidecarState(Mutex::new(child)))
+        .manage(SidecarState(Mutex::new(None)))
         .invoke_handler(tauri::generate_handler![
             restart_sidecar,
             get_settings, save_settings,
@@ -380,6 +389,18 @@ fn main() {
             list_company_presets, save_company_preset, delete_company_preset,
         ])
         .setup(|app| {
+            // Spawn the sidecar here, not before .run() — the single-instance
+            // plugin's early-exit for a redundant launch happens before this
+            // callback runs, so a doomed second instance never gets this far.
+            // (It used to spawn unconditionally at the top of main(), so every
+            // redundant launch attempt spawned its own sidecar — and the
+            // sidecar's own _free_port() startup logic would force-kill
+            // whatever process already held port 7433, silently killing the
+            // real running instance's sidecar.)
+            if let Ok(child) = spawn_sidecar() {
+                *app.state::<SidecarState>().0.lock().unwrap() = Some(child);
+            }
+
             let window = app.get_webview_window("main").unwrap();
 
             #[cfg(target_os = "windows")]

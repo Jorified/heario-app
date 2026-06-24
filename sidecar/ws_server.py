@@ -473,7 +473,12 @@ async def main():
 
 
 def _free_port(port: int):
-    """Kill any process already bound to our port so we can restart cleanly."""
+    """Kill a stale sidecar process left bound to our port (e.g. from a crashed
+    previous run) so we can restart cleanly. Only ever targets processes named
+    like our own sidecar — never an arbitrary process that happens to hold the
+    port — since this used to unconditionally kill whatever owned it, which
+    would silently murder a healthy, already-running sidecar if this ever ran
+    while one was legitimately listening."""
     import socket, subprocess
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         if s.connect_ex(("localhost", port)) != 0:
@@ -483,7 +488,9 @@ def _free_port(port: int):
             ["powershell", "-Command",
              f"Get-NetTCPConnection -LocalPort {port} -ErrorAction SilentlyContinue "
              f"| Select-Object -ExpandProperty OwningProcess "
-             f"| ForEach-Object {{ Stop-Process -Id $_ -Force -ErrorAction SilentlyContinue }}"],
+             f"| ForEach-Object {{ Get-Process -Id $_ -ErrorAction SilentlyContinue }} "
+             f"| Where-Object {{ $_.ProcessName -match '^(heario-sidecar|python|pythonw)$' }} "
+             f"| ForEach-Object {{ Stop-Process -Id $_.Id -Force -ErrorAction SilentlyContinue }}"],
             capture_output=True, timeout=5
         )
     except Exception:
