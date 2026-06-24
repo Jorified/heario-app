@@ -1101,7 +1101,7 @@ export default function App() {
         <div className="topbar-row topbar-row2">
           <button className={`pill-btn pause-btn${paused ? " paused" : ""}`}
             onClick={togglePause} title="p — pause/resume">
-            {paused ? "▶ Resume" : "⏸ Pause"}
+            {paused ? "▶ Play" : "⏸ Pause"}
           </button>
           <button className={`pill-btn web-btn${webEnabled ? " web-active" : ""}`}
             onClick={toggleWeb} title="w — toggle web search">
