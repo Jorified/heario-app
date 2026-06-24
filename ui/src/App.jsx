@@ -245,7 +245,7 @@ function SettingsModal({ onClose, liveBrief, onResearch, researching, researchEr
             <div className="settings-label">Audio</div>
             <label className="settings-field">
               <span>Audio Source</span>
-              <select value={form.audio_source || 'loopback'}
+              <select value={form.audio_source || 'microphone'}
                 onChange={e => setForm(f => ({...f, audio_source: e.target.value}))}>
                 <option value="microphone">Microphone</option>
                 <option value="loopback">System Audio (WASAPI Loopback)</option>
