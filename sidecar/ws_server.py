@@ -107,7 +107,7 @@ def on_transcript(speaker, text):
         assistant.stream_answer(text, sink, use_web=_web_enabled)
         _log.set_answer("".join(parts))
         _events.put({"type": "answer_end"})
-        _events.put({"type": "status", "state": "listening"})
+        _events.put({"type": "status", "state": "paused" if _paused else "listening"})
         _push_history()
 
 
@@ -196,7 +196,7 @@ def handle_cmd(msg: dict):
                 _events.put({"type": "research_done", "brief": brief})
             except Exception as e:
                 _events.put({"type": "research_done", "brief": "", "error": str(e)})
-            _events.put({"type": "status", "state": "listening"})
+            _events.put({"type": "status", "state": "paused" if _paused else "listening"})
         threading.Thread(target=run, daemon=True).start()
     elif cmd == "set_length":
         assistant.set_length(msg.get("length", "normal"))
@@ -211,7 +211,7 @@ def handle_cmd(msg: dict):
             assistant.regenerate(sink)
             _log.regenerated("".join(parts))
             _events.put({"type": "answer_end"})
-            _events.put({"type": "status", "state": "listening"})
+            _events.put({"type": "status", "state": "paused" if _paused else "listening"})
             _push_history()
         threading.Thread(target=run, daemon=True).start()
     elif cmd == "ask":
@@ -227,7 +227,7 @@ def handle_cmd(msg: dict):
             assistant.stream_answer(question, sink, use_web=_web_enabled)
             _log.set_answer("".join(parts))
             _events.put({"type": "answer_end"})
-            _events.put({"type": "status", "state": "listening"})
+            _events.put({"type": "status", "state": "paused" if _paused else "listening"})
             _push_history()
         threading.Thread(target=run, daemon=True).start()
     elif cmd == "clear":
