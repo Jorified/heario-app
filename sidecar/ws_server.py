@@ -420,9 +420,17 @@ async def _broadcaster():
             await asyncio.sleep(0.01)
 
 
+# Origins of the app's own webview — reject WS handshakes from any other
+# Origin (e.g. a malicious webpage open in the user's browser) to prevent
+# CSRF-via-WebSocket against this localhost server. Connections missing an
+# Origin header are rejected too unless None is in this list, which is what
+# we want: only the app's webview should ever talk to this socket.
+ALLOWED_ORIGINS = ["tauri://localhost", "https://tauri.localhost", "http://localhost:1420"]
+
+
 async def main():
     print(f"[ws] sidecar listening on ws://localhost:{PORT}")
-    async with websockets.serve(handler, "localhost", PORT):
+    async with websockets.serve(handler, "localhost", PORT, origins=ALLOWED_ORIGINS):
         await _broadcaster()          # runs forever
 
 
