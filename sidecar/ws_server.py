@@ -164,6 +164,7 @@ def handle_cmd(msg: dict):
     elif cmd == "resume":
         _paused = False
         _events.put({"type": "status", "state": "listening"})
+        _start_pipeline()   # first Resume is what actually opens the mic / starts metering
     elif cmd == "toggle_web":
         _web_enabled = not _web_enabled
         _events.put({"type": "web", "enabled": _web_enabled})
@@ -391,8 +392,11 @@ async def handler(ws):
     await ws.send(json.dumps({"type": "length", "length":  assistant.current_length()}))
     await ws.send(json.dumps({"type": "status", "state":   "paused" if _paused else "listening"}))
     await ws.send(json.dumps({"type": "answers", "enabled": _answers_enabled}))
-    # Start the audio pipeline on first connection
-    if not _pipeline_started:
+    # Don't auto-start the pipeline here — it starts on the first "resume"
+    # command (see handle_cmd) so mic capture / STT metering only begins once
+    # the user actually presses Play. Reconnects while already resumed (e.g.
+    # after a sidecar restart) still need to (re)start it though.
+    if not _paused and not _pipeline_started:
         _start_pipeline()
     try:
         async for raw in ws:
