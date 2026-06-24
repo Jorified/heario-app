@@ -111,6 +111,25 @@ def on_transcript(speaker, text):
         _push_history()
 
 
+def _save_quick_debrief(debrief: str):
+    """Persist a Quick Debrief (typed-recap, no live session) to disk so it's
+    recoverable later — mirrors SessionLog's own 'sessions' directory so both
+    kinds of debrief show up in the same place."""
+    if not debrief:
+        return
+    try:
+        os.makedirs("sessions", exist_ok=True)
+        stamp = time.strftime("%Y%m%d-%H%M%S")
+        path = os.path.join("sessions", f"quick-debrief-{stamp}.txt")
+        with open(path, "w", encoding="utf-8") as f:
+            f.write("=" * 60 + "\n")
+            f.write(f"HEARIO QUICK DEBRIEF — {time.strftime('%Y-%m-%d %H:%M:%S')}\n")
+            f.write("=" * 60 + "\n\n")
+            f.write(debrief.strip() + "\n")
+    except OSError as e:
+        print(f"[ws] failed to save quick debrief: {e}")
+
+
 def _make_conf_sink(parts, hist_obj=None):
     """Return a sink function that strips [C:N] confidence prefix and emits a confidence event."""
     conf_buf  = []
@@ -243,7 +262,7 @@ def handle_cmd(msg: dict):
             _events.put({"type": "status", "state": "answering"})
             debrief = assistant.generate_debrief(_log._events)
             summary = assistant.session_summary()
-            _log.export(speaker_names=_SPEAKER_NAMES)
+            _log.export(speaker_names=_SPEAKER_NAMES, debrief=debrief)
             _events.put({"type": "session_end", "summary": summary, "debrief": debrief})
             _log = SessionLog()
             assistant.reset_session()
@@ -257,6 +276,7 @@ def handle_cmd(msg: dict):
         _events.put({"type": "status", "state": "answering"})
         def run():
             debrief = assistant.generate_quick_debrief(text)
+            _save_quick_debrief(debrief)
             _events.put({"type": "quick_debrief_result", "debrief": debrief})
             # Reflect whatever the live pause state is — the user may have
             # already pressed Play again while the debrief was generating.
