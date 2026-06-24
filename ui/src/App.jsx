@@ -786,7 +786,7 @@ export default function App() {
   const [pos,          setPos]         = useState(0);
   const [total,        setTotal]       = useState(0);
   const [wsState,      setWsState]     = useState("connecting");
-  const [paused,       setPaused]      = useState(false);
+  const [paused,       setPaused]      = useState(true);
   const [webEnabled,   setWebEnabled]  = useState(false);
   const [answersEnabled, setAnswersEnabled] = useState(true);
   const [fontIdx,      setFontIdx]     = useState(2);

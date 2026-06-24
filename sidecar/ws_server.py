@@ -55,7 +55,7 @@ atexit.register(lambda: _log.export(speaker_names=_SPEAKER_NAMES))
 _events: "queue.Queue[dict]" = queue.Queue()
 _connected: set = set()
 _pipeline_started = False
-_paused = False
+_paused = True   # start paused — user presses Resume to begin the interview
 _web_enabled = False
 # When False, transcription keeps running but no AI answers are generated —
 # lets STT-only users avoid burning their AI-request quota on auto-answered questions.
