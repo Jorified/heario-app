@@ -251,11 +251,12 @@ def handle_cmd(msg: dict):
         threading.Thread(target=run, daemon=True).start()
     elif cmd == "quick_debrief":
         text = msg.get("text", "")
+        _paused = True   # stop listening while the user reviews the debrief
+        _events.put({"type": "status", "state": "answering"})
         def run():
-            _events.put({"type": "status", "state": "answering"})
             debrief = assistant.generate_quick_debrief(text)
             _events.put({"type": "quick_debrief_result", "debrief": debrief})
-            _events.put({"type": "status", "state": "listening"})
+            _events.put({"type": "status", "state": "paused"})
         threading.Thread(target=run, daemon=True).start()
 
 
