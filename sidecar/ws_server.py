@@ -463,7 +463,7 @@ async def _broadcaster():
 # CSRF-via-WebSocket against this localhost server. Connections missing an
 # Origin header are rejected too unless None is in this list, which is what
 # we want: only the app's webview should ever talk to this socket.
-ALLOWED_ORIGINS = ["tauri://localhost", "https://tauri.localhost", "http://localhost:1420"]
+ALLOWED_ORIGINS = ["tauri://localhost", "https://tauri.localhost", "http://tauri.localhost", "http://localhost:1420"]
 
 
 async def main():
