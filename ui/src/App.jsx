@@ -942,6 +942,19 @@ export default function App() {
     return () => unlisten?.();
   }, []);
 
+  // Settings "Save & Restart" kills and respawns the sidecar — same
+  // data-loss risk as Quit, but silent (no debrief popup) since the user
+  // isn't ending their session.
+  useEffect(() => {
+    let unlisten;
+    listen("request-silent-export", () => {
+      if (ws.current?.readyState === WebSocket.OPEN) {
+        ws.current.send(JSON.stringify({ cmd: "export_silent" }));
+      }
+    }).then(fn => { unlisten = fn; });
+    return () => unlisten?.();
+  }, []);
+
   useEffect(() => {
     invoke("get_settings").then(s => {
       if (s.speaker_names?.length) setSpeakerNames(s.speaker_names);

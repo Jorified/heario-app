@@ -312,7 +312,14 @@ fn set_autostart(app: tauri::AppHandle, enabled: bool) -> Result<(), String> {
 // ── Sidecar ───────────────────────────────────────────────────────────────────
 
 #[tauri::command]
-fn restart_sidecar(state: tauri::State<SidecarState>) -> Result<(), String> {
+fn restart_sidecar(app: tauri::AppHandle, state: tauri::State<SidecarState>) -> Result<(), String> {
+    // Same data-loss risk as tray Quit: killing the sidecar mid-interview
+    // would silently lose the in-progress transcript. Give it a brief window
+    // to export first (silently — this isn't the user ending their session).
+    if let Some(w) = app.get_webview_window("main") {
+        let _ = w.emit("request-silent-export", ());
+    }
+    std::thread::sleep(std::time::Duration::from_millis(400));
     let mut guard = state.0.lock().unwrap();
     if let Some(mut child) = guard.take() { let _ = child.kill(); }
     *guard = Some(spawn_sidecar()?);

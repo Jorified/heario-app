@@ -259,6 +259,12 @@ def handle_cmd(msg: dict):
     elif cmd == "quit":
         _events.put({"type": "session_end", "summary": assistant.session_summary()})
         _log.export(speaker_names=_SPEAKER_NAMES)
+    elif cmd == "export_silent":
+        # Used before a sidecar restart (e.g. Settings -> Save & Restart) so an
+        # in-progress transcript isn't lost — unlike "quit", this must NOT
+        # broadcast session_end (the user isn't ending their session, just
+        # changing a setting, and shouldn't see the debrief modal pop up).
+        _log.export(speaker_names=_SPEAKER_NAMES)
     elif cmd == "end_session":
         def run():
             global _log
