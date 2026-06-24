@@ -120,7 +120,10 @@ def _save_quick_debrief(debrief: str):
     try:
         os.makedirs("sessions", exist_ok=True)
         stamp = time.strftime("%Y%m%d-%H%M%S")
-        path = os.path.join("sessions", f"quick-debrief-{stamp}.txt")
+        # Keep the "session-" prefix so History's filename sort (newest first,
+        # plain string comparison) correctly interleaves these with real
+        # session transcripts by timestamp instead of grouping by prefix.
+        path = os.path.join("sessions", f"session-{stamp}-quickdebrief.txt")
         with open(path, "w", encoding="utf-8") as f:
             f.write("=" * 60 + "\n")
             f.write(f"HEARIO QUICK DEBRIEF — {time.strftime('%Y-%m-%d %H:%M:%S')}\n")
