@@ -256,7 +256,9 @@ def handle_cmd(msg: dict):
         def run():
             debrief = assistant.generate_quick_debrief(text)
             _events.put({"type": "quick_debrief_result", "debrief": debrief})
-            _events.put({"type": "status", "state": "paused"})
+            # Reflect whatever the live pause state is — the user may have
+            # already pressed Play again while the debrief was generating.
+            _events.put({"type": "status", "state": "paused" if _paused else "listening"})
         threading.Thread(target=run, daemon=True).start()
 
 
