@@ -247,7 +247,9 @@ def handle_cmd(msg: dict):
             _events.put({"type": "session_end", "summary": summary, "debrief": debrief})
             _log = SessionLog()
             assistant.reset_session()
-            _events.put({"type": "status", "state": "listening"})
+            # Reflect whatever the live pause state is — the user may have
+            # paused while the debrief was generating.
+            _events.put({"type": "status", "state": "paused" if _paused else "listening"})
         threading.Thread(target=run, daemon=True).start()
     elif cmd == "quick_debrief":
         text = msg.get("text", "")

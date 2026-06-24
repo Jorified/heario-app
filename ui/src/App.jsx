@@ -1130,10 +1130,10 @@ export default function App() {
             📌{pinned.length > 0 && <span className="badge">{pinned.length}</span>}
           </button>
           <button className="icon-btn" onClick={() => setShowHistory(true)} title="Session history">🕐</button>
-          <button className="icon-btn" onClick={endSession} disabled={endingSession} title="Quick Debrief — end session & get a debrief">
+          <button className="icon-btn" onClick={endSession} disabled={endingSession} title="End Meeting — get a debrief, then start fresh for the next one">
             {endingSession ? "⏳" : "📝"}
           </button>
-          <button className="icon-btn" onClick={() => setShowQuickDebrief(true)} title="Practice Recap — free, no session needed">✍️</button>
+          <button className="icon-btn" onClick={() => setShowQuickDebrief(true)} title="Quick Debrief — free, no session needed">✍️</button>
           <button className="icon-btn" onClick={() => setShowNotes(true)} title="Take Notes — n (added to your next debrief)">
             📓{notes.trim() && <span className="badge">•</span>}
           </button>
